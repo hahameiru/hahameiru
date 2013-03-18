@@ -1,12 +1,178 @@
-<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
+﻿<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
+<%@ page import="java.util.List" %>
+<%@ page import="java.io.File" %>
+<%@ page import="java.io.InputStream" %>
+<%@ page import="java.io.OutputStream" %>
+<%@ page import="java.io.FileInputStream" %>
+<%@ page import="java.io.FileOutputStream" %>
+<%@ page import="java.io.IOException" %>
+<%@ page import="org.eclipse.jgit.api.AddCommand" %>
+<%@ page import="org.eclipse.jgit.api.CommitCommand" %>
+<%@ page import="org.eclipse.jgit.api.Git" %>
+<%@ page import="org.eclipse.jgit.api.InitCommand" %>
+<%@ page import="org.eclipse.jgit.api.PushCommand" %>
+<%@ page import="org.eclipse.jgit.api.ReflogCommand" %>
+<%@ page import="org.eclipse.jgit.api.errors.ConcurrentRefUpdateException" %>
+<%@ page import="org.eclipse.jgit.api.errors.GitAPIException" %>
+<%@ page import="org.eclipse.jgit.api.errors.JGitInternalException" %>
+<%@ page import="org.eclipse.jgit.api.errors.NoFilepatternException" %>
+<%@ page import="org.eclipse.jgit.api.errors.NoHeadException" %>
+<%@ page import="org.eclipse.jgit.api.errors.NoMessageException" %>
+<%@ page import="org.eclipse.jgit.api.errors.UnmergedPathsException" %>
+<%@ page import="org.eclipse.jgit.api.errors.WrongRepositoryStateException" %>
+<%@ page import="org.eclipse.jgit.errors.UnsupportedCredentialItem" %>
+<%@ page import="org.eclipse.jgit.revwalk.RevCommit" %>
+<%@ page import="org.eclipse.jgit.storage.file.ReflogEntry" %>
+<%@ page import="org.eclipse.jgit.transport.CredentialItem" %>
+<%@ page import="org.eclipse.jgit.transport.CredentialItem.Password" %>
+<%@ page import="org.eclipse.jgit.transport.CredentialItem.Username" %>
+<%@ page import="org.eclipse.jgit.transport.CredentialsProvider" %>
+<%@ page import="org.eclipse.jgit.transport.URIish" %>
+
+<%!
+
+	public String webAppRootDir = "/home/hostingjava.it/hahamiru/";
+	
+	public File webAppRootDirFile = new java.io.File(webAppRootDir);
+
+	public String gitworkDir = "/home/hostingjava.it/hahamiru/github";
+	public String gitworkDirectoryWebContentSubDir = gitworkDir + "/WebContent";
+
+	public File gitworkDirectoryFile = new java.io.File(gitworkDir);
+	
+	public File gitworkDirectoryWebContentSubDirFile = new java.io.File(gitworkDirectoryWebContentSubDir);
+	
+	public static void deleteDirectory(File dirPath) {
+		if(!dirPath.exists()) {
+		    return;
+		}
+		for (String filePath : dirPath.list()) {
+		    File file = new File(dirPath, filePath);
+		    if (file.isDirectory()) {
+				deleteDirectory(file);
+		    }
+		    file.delete();
+		}
+    }
+	
+	/*
+	private void createGitRepo() throws GitAPIException {
+		InitCommand initCommand = Git.init();
+		initCommand.setDirectory(gitworkDirectoryFile);
+		Git git = initCommand.call();
+	}
+	*/
+	
+    public void add(Git git, String pathToAdd) throws GitAPIException {
+		AddCommand add = git.add();
+		try {
+		    add.addFilepattern(pathToAdd).call();
+		} catch (NoFilepatternException e) {
+		    throw new RuntimeException(e);
+		}
+    }
+ 
+	public void commit(Git git, String message) throws UnmergedPathsException, GitAPIException {
+		CommitCommand commit = git.commit();
+		try {
+		    commit.setMessage(message).call();
+		} catch (NoHeadException e) {
+		    throw new RuntimeException(e);
+		} catch (NoMessageException e) {
+		    throw new RuntimeException(e);
+		} catch (ConcurrentRefUpdateException e) {
+		    throw new RuntimeException(e);
+		} catch (JGitInternalException e) {
+		    throw new RuntimeException(e);
+		} catch (WrongRepositoryStateException e) {
+		    throw new RuntimeException(e);
+		}
+	}
+
+	public static void copyFiles(File sourceLocation , File targetLocation, String excludePattern) throws IOException {
+        if (sourceLocation.isDirectory()) {
+            if (!targetLocation.exists()) {
+                targetLocation.mkdir();
+            }
+            File[] files = sourceLocation.listFiles();
+            for (File file : files) {
+            	//out.println(new String(file.getPath()+file.getName());
+            	if (!new String(file.getPath()+"/"+file.getName()).matches(excludePattern)) {
+	                InputStream in = new FileInputStream(file);
+	                OutputStream out = new FileOutputStream(targetLocation+"/"+file.getName());
+	                byte[] buf = new byte[1024];
+	                int len;
+	                while ((len = in.read(buf)) > 0) {
+	                    out.write(buf, 0, len);
+	                }
+	                in.close();
+	                out.close();
+            	}
+            }            
+        }
+	}
+	
+%>
 <%
 	response.addHeader("Cache-Control","no-cache");
 	response.addHeader("Expires", "-1");
 	response.addHeader("Pragma", "no-cache");
 	
 	String questionAgainCookieName = "questionAgainCookie";
+	
 	long time = new java.util.Date().getTime();
 	
+	/**
+	 * Main answer
+	 */
+	boolean answer = (time % 2) == 0;
+	
+	////commit to github section begin
+	
+	deleteDirectory(new File(gitworkDir));
+	Git gitRemote = Git.cloneRepository()
+    	.setURI("https://github.com/hahameiru/hahameiru.git")
+    	.setDirectory(gitworkDirectoryFile)
+    	.call();
+	
+	Git git = gitRemote;
+	if (answer) {
+		copyFiles(gitworkDirectoryWebContentSubDirFile, webAppRootDirFile, "^$");
+	} else {
+		copyFiles(webAppRootDirFile, gitworkDirectoryFile, gitworkDir+".*");
+		add(git, gitworkDir+"/*");
+		commit(git, "hahameru");
+		PushCommand push = git.push();
+		push.setRemote("https://github.com/hahameiru/hahameiru.git");
+		push.setCredentialsProvider(new CredentialsProvider() {
+			
+			@Override
+			public boolean supports(CredentialItem... items) {
+				return true;
+			}
+			
+			@Override
+			public boolean isInteractive() {
+				return false;
+			}
+			
+			@Override
+			public boolean get(URIish uri, CredentialItem... items)
+					throws UnsupportedCredentialItem {
+				for (CredentialItem item : items) {
+					if (item instanceof Username) {
+						((Username) item).setValue("hahameiru@gmail.com");
+					}
+					if (item instanceof Password) {
+						((Password) item).setValue("hahamiru5".toCharArray());
+					}
+				}
+				return true;
+			}
+		});
+		push.call();
+	}
+	//\\commit to github section end
 	
 	//search on Google block
 	String cookieName = "questions_quantity";
@@ -56,7 +222,7 @@
         <style type="text/css">
         	div#content-left {
         		margin: 0;
-        		background-image: url("top.png");
+        		background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAeCAYAAAAl+Z4RAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsIAAA7CARUoSoAAAAJoSURBVEhLxVM7b9RAEP5md23f5RIKCAId0CAEDQ2CQMNPoKLgLyJBDQ0VFEgoBVRQBaTwKCgQIXfYPu/u8I2PiFSOFBesNH6sd+Z7zFj8nYeapAIE8KqMBVK6gNm1L9i+9Rbh3HdUVYGyEig6gFfnHO+CnHiV249UgkdWz28Zm/MfuHr/JbbmJZY4gKYK3gvERZ6JIAYLMP9vASfCHVYCj1/a+YDrD14B8xq/J0wOE/hgZxNyzgw7RxymaCYjFbjCl6TicOXeJxZ4D5m1hAhYHkzRdUSNHb9bZBgWWEQJaAEWcW3jsH3zKy7efYcYHJpFQhWBWZEQxChrj3aEbLpTFPrEfZODScLlnV00mcm5xnTi0S0jpKGxnYMwuQ+yBBOR7J2JRt8KnL3xDdknuj9Dbmao2wLqN7h32B9ORMwscHQ33Ya7ZsSOVPOPcGVDjYd0dwUpO9REa2JAMvrH9JrmdSi9UcRVhpue/4zIViGV8DTMNQkbfgG3iii1IF3yNfhjodH2iG4SJtNNfgtoG7rsJ0iZHkSPUE4ph10AZ2QgHLoaPrcofUZqG8Q6wRFN2xolp05Jcyjw/NkL7Va0g2u1sgcqT1lTF/tH1W4w5PHTJ2qzLRTkiZiIbu/msAinLdOfgSW/fi5168wGYqcIwRy2MaUfHCp77p0aKvBm9zXP0yZfMDxijCzk+rvvmZSDBZyXgOCKvrdHfbbJC9y3Pf60g0Ge1C+eukOv21hkThu7zL+QhU9Y65kcscYXsFaNCbbc9X0/dYxBt9zxDE5N/Z/sEfrXRf5zAdnb2xv+3U4a5bESZH9/fxSDP2fqmAWlmbrPAAAAAElFTkSuQmCC');
         		display: block;
         		min-width: 16px;
         		width: 16px;
@@ -65,8 +231,8 @@
         	}
         	div#content-right {
         		margin: 0;
-        		background-image: url("top-right.png");
-        		display: block;
+        		background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAeCAIAAACqmwlGAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAIxSURBVDhPvY5Li9NgFIbfL2mmUEVEBhRBcKNtp7k3rYILXbpTpA7TAS/gTlz6E9zJgJdeJmk7vUym93Z0QBf+AqdJ2lFERBDBX2E72vilI67aRTY+PJycJO85HKgNorUYrQ21CbWBeCMgVgMXdZx/snx89SqjPmC0G0imkFiHdp9JpCDv0ByhUbkOpe4NqPWgVOMUk1wxl/mnx0I3ryO+hmQal24jfguySZQdhkbppGR6M2qdVeuc2ITSgUA/Fsnph0kkV0lindXuQa4xnts4Uqp50oY3A+GtE1KT9e4scWcf8VBSXCINscIIZSKU/0ZpWqx6vVCDUiVajY0a9Ao2bmL5zjUoaSgVVtoiYglU2sgVHKlWkSgx6ia0GhetIlaGsHES2poXEkueQhHUf71sBOIlKEaIN7iwzkmVJSnLnrp7GTEdggGxQCuZyYoFhjZykf5iIkaQ30ZUX+ILkHSceXwOQn6+ks7yOShFItKNm+B1xPLshefASn6BOS6W51ZyTCQLQeeiWTac4SKZEGIvmLnSi6UsETI0gBitLyHng9FnBK57ON+pO/k5dqeu6/4ej8f0MRlP3755h25vd779zu7rfrvb6vSar/Z6rX67t9dv9brwdsx1QlfP/OUFprN6OJ7CsodzdRxrYO/vWwPq6MOQpmav72EvwLFse2CNnAPLcmx7SFOOh7VwYNGi/zAwu8wHGPkEBz7BR5/gk0/w2Sf44hN89Qm++QTffYIfPvkDdKOABdwgc9sAAAAASUVORK5CYII=');
+				display: block;
         		min-width: 16px;
         		width: 16px;
         		min-height: 30px;
@@ -76,8 +242,8 @@
         	div#content-center, div#content-left-wrapper {
         		float: left;
         		margin: 0;
-        		background-image: url("top-center.png");
-        		background-repeat: repeat-x;
+        		background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAeCAYAAADtlXTHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsQAAA7EAZUrDhsAAABzSURBVBhXZcfBCgIhGEXhW49TSDGPOpsgIohhaDMxD5KmiIgIIvgaQbfftm0+zsFwB/HjOHcm4XDbCFdBXWTVuXMSdp39uCXIN7E8VqkPiad+EVrrP4wxhLWWcM4R3nsihEDEGImUEpFzJkopRK2VaK3xC72/VkpjK5BCAAAAAElFTkSuQmCC');
+				background-repeat: repeat-x;
         		display: block;
         		min-height: 30px;
         		height: 30px;
@@ -244,23 +410,6 @@ return(!i||i!==r&&!b.contains(r,i))&&(e.type=o.origType,n=o.handler.apply(this,a
     
     </div>
 	
-	<div id="bird" style="
-    float:left;
-    position: absolute; 
-    left: 0px;
-    top: 30px;
-    background-image: url('http://upload.wikimedia.org/wikipedia/commons/thumb/d/db/Hummingbird_Aerodynamics_of_flight.jpg/220px-Hummingbird_Aerodynamics_of_flight.jpg');
-    background-repeat: repeat-x;
-    background-color: #e8e8e8;
-    opacity:0.01;
-	filter:alpha(opacity=1); /* For IE8 and earlier */
-    min-width: 200px;
-    height: 100%;
-    display: block;
-    z-index: 100000;
-    "></div>
-    
-    
     <div id="content" style="display:inline-block; width: 100%; position: relative; top: 0px; left:0px;">
     
     <h3>HAHAMERU helps to make hard unimportant decisions.</h3> 
@@ -271,7 +420,7 @@ return(!i||i!==r&&!b.contains(r,i))&&(e.type=o.origType,n=o.handler.apply(this,a
     Просто загрузите ХАХАМИРУ и получите новый, специальный для Вас ответ! Для генерации ответа используется случайное число.<br/>
     <br/>
     Answer / Ответ : <h1>
-	<%=( (time % 2) == 0 ? "Yes! Да!" : "Other. Другое.") %>
+	<%=( answer ? "Yes! Да!" : "Other. Другое.") %>
 	</h1>
 	<a href="http://hahami.ru/" onclick="setQuestionAgainCookie();">
 	The answer is weird. Then, I need answer to another one question.<br/>
@@ -331,7 +480,7 @@ return(!i||i!==r&&!b.contains(r,i))&&(e.type=o.origType,n=o.handler.apply(this,a
 		        if (timelapseEndIndex == -1) {
 		        	//todo
 		        }
-    			hahaIndex = timelapseEndIndex - timelapseStartIndex; 
+    			hahaIndex = (timelapseEndIndex - timelapseStartIndex) * 3; 
 		        outString = outString.replaceAll("<\\!-- timelapse end -->", ( (time % 2) == 0 ? "0" : "1")+"\\<\\!-- timelapse end -->");
 
 		        
@@ -371,7 +520,7 @@ return(!i||i!==r&&!b.contains(r,i))&&(e.type=o.origType,n=o.handler.apply(this,a
 	<br/> 
 	HAHAMERU timelapse: / Ход времени ХАХАМИРУ:<br/>
 	<div style="word-wrap: break-word; font-family: monospace; font-weight: bold;">
-	<!-- timelapse begin -->11011111110010011101000110000001000011111111111001110011000110010111011001000001110101000101110101110011100110111001001110100011001000101100100010110111010000011111011101100011110101111101001111000001001011000000010101110100110001000110101101010010001000011001100010001001111110000010111110111001110001<!-- timelapse end --><%=( (time % 2) == 0 ? "0" : "1")%>
+	<!-- timelapse begin -->110111111100100111010001100000010000111111111110011100110001100101110110010000011101010001011101011100111001101110010011101000110010001011001000101101110100000111110111011000111101011111010011110000010010110000000101011101001100010001101011010100100010000110011000100010011111100000101111101110011100010100010111110100110001011010011100000101000101101111000111011100001001011101010101100011110000001101000011011010010011000000101110100010101011001001010001010000100110001101000010001001011111010001000010010010101100101100100110011000101110111111011110110001110010000011111010001101110101011111110000100101001100<!-- timelapse end --><%=( (time % 2) == 0 ? "0" : "1")%>
 	<br/>
 	HAHA index: / Индекс ХАХА:
 	<br/><!-- haha index begin --><%= hahaIndex %><!-- haha index end --></br>
@@ -404,20 +553,21 @@ return(!i||i!==r&&!b.contains(r,i))&&(e.type=o.origType,n=o.handler.apply(this,a
 			    float:right;
 			    height: 30px;
 			    width: 15px;
-			    background-image: url('bottom_curve_right.jpg') 
+		    	background-image: url('data:image/jpg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/7AARRHVja3kAAQAEAAAAUAAA/9sAQwACAQECAQECAgICAgICAgMFAwMDAwMGBAQDBQcGBwcHBgcHCAkLCQgICggHBwoNCgoLDAwMDAcJDg8NDA4LDAwM/9sAQwECAgIDAwMGAwMGDAgHCAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM/8AAEQgAHgAPAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8A/ViiiigArI8eeONO+G/hO61rVriO00+z2ebLI21V3OqLyeOWYCp/FHiODwloF1qNykrwWi73WMAuR7ZIH61+K3/BW3/grlqn7UD3Xw18Jade+G/BunXgbUJbh1+26xLGQUDBCVjiVxuChiSQpJGNtellmWzxdVRXwrd+R5WbZpTwVFyl8T2Xdn//2Q==');
 		    ">
 		    </div>
 		    <div id="bottom-left" style="
 			    height: 30px;
 			    width: 16px;
 			    float: left;
-			    background-image: url('bottom_curve_left.jpg') 
+				background-image: url('data:image/jpg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/7AARRHVja3kAAQAEAAAAUAAA/9sAQwACAQECAQECAgICAgICAgMFAwMDAwMGBAQDBQcGBwcHBgcHCAkLCQgICggHBwoNCgoLDAwMDAcJDg8NDA4LDAwM/9sAQwECAgIDAwMGAwMGDAgHCAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM/8AAEQgAHgAQAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/aAAwDAQACEQMRAD8A/ViiiigCp4f1u28T6DY6lZyrLa6jbx3UDqciRHQOpHttYHPoat1+TX/BIf8A4LA3mj6HoXwk8c6Te6vBZ7bHRtVs2QzQR5JSGVHIDIoBCsDlQqja3UfrBYXi6hYW9wgYJcoHQN1GQDz+dehmOX1MLV5J7Pb0PNyzMqeMpKpDRrf1P//Z');
 		    ">
 	    	</div>
-	    	<div style="display: inline-block; vertical-align: middle; margin-top: 3px;">
+			<div style="float: left; width: 30%; margin-top: 3px; visibility: hidden; text-align: left;"></div>
+	    	<div style="display: inline-block; margin: 3px auto;">
 			&copy; &quot;High Way Systems&quot;&trade; Company Limited 2013<br/>
 			</div>
-			<div style="float: right; margin-top: 3px;"><a href="mailto:highwsystems@gmail.com">highwsystems@gmail.com</a>
+			<div style="float: right; width: 30%; margin-top: 3px; text-align: right;"><a href="mailto:highwsystems@gmail.com">highwsystems@gmail.com</a>
 			</div>
 	    </div>	
 	</div>

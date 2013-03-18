@@ -3,6 +3,7 @@
 	<name>hahamiru</name>
 	<comment></comment>
 	<projects>
+		<project>org.eclipse.jgit</project>
 	</projects>
 	<buildSpec>
 		<buildCommand>
